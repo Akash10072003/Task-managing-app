@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Check, Trash2, Clock, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
 import { Task, ALARM_SOUNDS } from '../types';
@@ -10,8 +10,10 @@ interface TaskListProps {
 }
 
 export function TaskList({ tasks, onDelete, onComplete }: TaskListProps) {
-  const [expandedGroups, setExpandedGroups] = React.useState<string[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+  const [playedAlarms, setPlayedAlarms] = useState<string[]>([]); // Store played alarm IDs
 
+  // Group tasks by recurring and single tasks
   const groupedTasks = useMemo(() => {
     const groups: { [key: string]: Task[] } = {};
     
@@ -38,6 +40,46 @@ export function TaskList({ tasks, onDelete, onComplete }: TaskListProps) {
         ? prev.filter(name => name !== groupName)
         : [...prev, groupName]
     );
+  };
+
+  // **Alarm System: Checks every second**
+  useEffect(() => {
+    const checkAlarms = () => {
+      const now = new Date();
+
+      tasks.forEach(task => {
+        if (task.datetime && !task.completed && !playedAlarms.includes(task.id)) {
+          const alarmTime = new Date(task.datetime);
+          
+          if (
+            now.getFullYear() === alarmTime.getFullYear() &&
+            now.getMonth() === alarmTime.getMonth() &&
+            now.getDate() === alarmTime.getDate() &&
+            now.getHours() === alarmTime.getHours() &&
+            now.getMinutes() === alarmTime.getMinutes()
+          ) {
+            playAlarm(task);
+            setPlayedAlarms(prev => [...prev, task.id]); // Mark alarm as played
+          }
+        }
+      });
+    };
+
+    const interval = setInterval(checkAlarms, 1000); // Check every second
+
+    return () => clearInterval(interval); // Cleanup on unmount
+  }, [tasks, playedAlarms]);
+
+  // Function to play alarm sound
+  const playAlarm = (task: Task) => {
+    const alarmSound = task.customSound?.url || ALARM_SOUNDS.find(sound => sound.id === task.alarmSound)?.url;
+
+    if (alarmSound) {
+      const audio = new Audio(alarmSound);
+      audio.play();
+    } else {
+      alert(`Alarm for task: ${task.name}!`); // Fallback alert if no sound is selected
+    }
   };
 
   if (Object.keys(groupedTasks).length === 0) {
